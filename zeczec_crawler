@@ -1,0 +1,107 @@
+import requests
+from bs4 import BeautifulSoup
+import time
+import json
+import pandas as pd
+import datetime
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+
+
+
+domain_url = 'https://www.zeczec.com'
+
+def crawler_zeczec_results(timesleep):
+    soup = get_soup(domain_url)
+    page_list = soup.select('.container > .container > .text-center > .button-group > .button')
+    last_page = int(page_list[-2].get_text())
+
+    for i in range(1, last_page+1)[0:1]: 
+        page_url = domain_url+f'/?page={i}'
+        page_soup = get_soup(page_url)
+        projects_list = page_soup.select('.container > .container > .flex.gutter3-l > .w-full > .text-black > .block')
+        
+        for j in projects_list:
+            product_url = domain_url + j.get('href')      
+            product_soup = get_soup(product_url)
+
+            title = product_soup.select('.text-xl.mt-2.mb-1.leading-relaxed')
+            title = title[0].get_text().replace('\n', '') if title else '' 
+            
+            amount = product_soup.select('.text-2xl')
+            amount = int(amount[0].get_text().replace('\n', '').replace('NT$', '').replace(',', '')) if amount else ''
+            
+            content = product_soup.select('.text-sm.text-neutral-600.my-4.leading-relaxed')
+            content = content[0].get_text().replace('\n', '') if content else ''
+                        
+            people = product_soup.select('.js-backers-count')
+            people = people[0].get_text().replace('\n', '') if people else ''
+                        
+            remain_time = product_soup.select('.js-time-left')
+            remain_time = remain_time[0].get_text().replace('\n', '') if remain_time else ''
+                        
+            start_date = product_soup.select('.mb-2.text-xs.leading-relaxed')
+            start_date = start_date[0].get_text()[6:20].replace('/', '-').replace('\n', '') if start_date else ''
+            start_date_strptime = datetime.strptime(start_date, '%y-%m-%d %H:%M') if start_date else ''
+            
+            end_date = product_soup.select('.mb-2.text-xs.leading-relaxed')
+            end_date = end_date[0].get_text()[25:40].replace('/', '-').replace('\n', '') if end_date else ''
+            end_date_strptime = datetime.strptime(end_date, '%y-%m-%d %H:%M') if end_date else ''
+
+            relative_date = datetime.now()-relativedelta(days=30)
+
+            if (title) and (start_date_strptime >= relative_date):
+
+                product_information = {
+                    'title' : title,
+                    'product_url' : product_url,
+                    'amount' : amount,
+                    'content' : content,
+                    'people' : people,
+                    'remaingtime' : remain_time,
+                    'start_date' : start_date_strptime,
+                    'end_date' : end_date_strptime,
+                }             
+                        
+                product_information_df = pd.DataFrame(product_information, index=[0])
+                                                  
+                product_information_df.to_csv('./data/zeczec_crowdfunding.csv', index=False, mode='a', header=False)
+                print(product_information)
+                print('-'*20)
+                time.sleep(timesleep)
+
+    df_sort_down()
+                
+
+            
+def df_sort_down():
+    df = pd.read_csv('./data/zeczec_crowdfunding.csv', header=None)
+    columns_name = [
+        '商品名稱',
+        '產品網址',
+        '累積金額',
+        '產品規格',
+        '贊助人數',
+        '剩餘時間',
+        '募資開始',
+        '募資結束',
+    ]
+    df.columns = columns_name  
+
+    df = df.sort_values(by=['累積金額'], ascending=[False])
+
+    # df.to_csv(f'./data/Crowdfunding_amount_sort.csv', mode='w', index=False)
+    df.to_csv(f'./data/zeczec_crowdfunding.csv', mode='w', index=False)
+    print(df)
+
+def get_soup(url):
+    headers = {
+        'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36',
+    }
+    resp = requests.get(url, headers=headers)
+    resp_results = resp.text 
+    soup = BeautifulSoup(resp_results, 'lxml')
+    return soup
+   
+if __name__ == '__main__':
+    crawler_zeczec_results(timesleep=6)
